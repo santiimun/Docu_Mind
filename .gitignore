@@ -1,0 +1,18 @@
+# Dependencias
+node_modules/
+
+# Variables de entorno con claves/passwords
+.env
+
+# Archivos subidos por los usuarios
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Archivos de build y compilación
+dist/
+build/
+
+# Sistema operativo e IDEs
+.DS_Store
+.vscode/
+*.log
