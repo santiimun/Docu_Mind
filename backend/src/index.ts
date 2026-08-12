@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import documentRoutes from './routes/document.routes.js';
 import './workers/document.worker.js';
+import chatRoutes from './routes/chat.routes';
+
 
 const app = express();
 const PORT = process.env['PORT'] || 4000;
@@ -11,6 +13,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/documents', documentRoutes);
+app.use('/api/chat', chatRoutes);
 
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok', message: 'Servidor DocuMind corriendo correctamente' });
