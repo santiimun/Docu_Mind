@@ -4,6 +4,8 @@ import {
   getDocumentSessions,
   getSessionMessages,
 } from '../controllers/chat.controller';
+import { validate } from '../middleware/validate.middleware';
+import { chatQuerySchema, idParamSchema } from '../schemas/chat.schema';
 
 const router = Router();
 
@@ -11,7 +13,8 @@ const router = Router();
 router.post('/', chatWithDocument);
 
 // Endpoints para recuperar historial y sesiones
-router.get('/sessions/:documentId', getDocumentSessions);
-router.get('/messages/:sessionId', getSessionMessages);
+router.post('/', validate(chatQuerySchema), chatWithDocument);
+router.get('/document/:documentId', validate(idParamSchema), getDocumentSessions);
+router.get('/messages/:sessionId', validate(idParamSchema), getSessionMessages);
 
 export default router;

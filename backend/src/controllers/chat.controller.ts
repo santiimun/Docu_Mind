@@ -28,7 +28,7 @@ export async function chatWithDocument(req: Request, res: Response) {
           title: question.substring(0, 40) + '...',
         },
       });
-      currentSessionId = newSession.id; 
+      currentSessionId = newSession.id;
     } else {
       const session = await prisma.chatSession.findUnique({
         where: { id: currentSessionId },
@@ -52,12 +52,12 @@ export async function chatWithDocument(req: Request, res: Response) {
       .map((msg) => `${msg.role === 'USER' ? 'Usuario' : 'Asistente'}: ${msg.content}`)
       .join('\n');
 
-    // 3. Generar embedding de la pregunta actual y buscar chunks
+    // 3. Generar embedding de la pregunta actual y buscar los chunks con ID y contenido
     const questionEmbedding = await generateEmbedding(question);
     const vectorString = `[${questionEmbedding.join(',')}]`;
 
-    const similarChunks: Array<{ content: string; similarity: number }> = await prisma.$queryRaw`
-      SELECT content, 1 - (embedding <=> ${vectorString}::vector) as similarity
+    const similarChunks: Array<{ id: string; content: string; similarity: number }> = await prisma.$queryRaw`
+      SELECT id, content, 1 - (embedding <=> ${vectorString}::vector) as similarity
       FROM "DocumentChunk"
       WHERE "documentId" = ${targetDocumentId}
       ORDER BY embedding <=> ${vectorString}::vector
@@ -68,11 +68,19 @@ export async function chatWithDocument(req: Request, res: Response) {
       return res.status(404).json({ error: 'No se encontraron fragmentos para este documento.' });
     }
 
+    // Preparamos los metadatos de las fuentes formateando la similitud a porcentaje
+    const sources = similarChunks.map((chunk, index) => ({
+      sourceId: index + 1,
+      chunkId: chunk.id,
+      snippet: chunk.content.length > 200 ? chunk.content.substring(0, 200) + '...' : chunk.content,
+      similarityScore: `${(chunk.similarity * 100).toFixed(1)}%`,
+    }));
+
     const contextText = similarChunks.map((chunk) => chunk.content).join('\n\n---\n\n');
 
     // 4. Prompt para Gemini con Contexto + Historial
     const prompt = `
-Eres un asistente que responde preguntas basándote ÚNICAMENTE en el siguiente contexto del documento.
+Eres un asistente experto que responde preguntas basándote ÚNICAMENTE en el siguiente contexto del documento.
 Usa el HISTORIAL DE LA CONVERSACIÓN para interpretar referencias implícitas o repreguntas del usuario.
 
 CONTEXTO DEL DOCUMENTO:
@@ -90,10 +98,17 @@ ${question}
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    // 6. Enviar mensaje inicial con metadatos de la sesión
-    res.write(`data: ${JSON.stringify({ type: 'start', sessionId: currentSessionId, sourcesUsed: similarChunks.length })}\n\n`);
+    // 6. Enviar mensaje inicial con metadatos de la sesión Y LAS FUENTES/CITAS UTILIZADAS
+    res.write(
+      `data: ${JSON.stringify({
+        type: 'start',
+        sessionId: currentSessionId,
+        sourcesUsed: sources.length,
+        sources: sources,
+      })}\n\n`
+    );
 
-    // 7. Usar generateContentStream en lugar de generateContent
+    // 7. Usar generateContentStream para enviar la respuesta por fragmentos
     const responseStream = await ai.models.generateContentStream({
       model: 'gemini-3.5-flash',
       contents: prompt,
@@ -101,7 +116,6 @@ ${question}
 
     let fullAnswerText = '';
 
-    // 8. Iterar sobre cada fragmento (chunk) recibido de Gemini y retransmitirlo al cliente
     for await (const chunk of responseStream) {
       const chunkText = chunk.text;
       if (chunkText) {
@@ -110,7 +124,7 @@ ${question}
       }
     }
 
-    // 9. Guardar la interacción completa en la base de datos
+    // 8. Guardar la interacción en la base de datos
     await prisma.$transaction([
       prisma.chatMessage.create({
         data: {
@@ -128,10 +142,9 @@ ${question}
       }),
     ]);
 
-    // 10. Enviar evento final de cierre
+    // 9. Enviar evento final de cierre
     res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
     res.end();
-
   } catch (error) {
     console.error('Error en chatWithDocument:', error);
     if (!res.headersSent) {
@@ -143,7 +156,6 @@ ${question}
   }
 }
 
-// 8. Obtener todas las sesiones de chat de un documento específico
 export async function getDocumentSessions(req: Request, res: Response) {
   try {
     const { documentId } = req.params as { documentId: string };
@@ -169,14 +181,13 @@ export async function getDocumentSessions(req: Request, res: Response) {
   }
 }
 
-// 9. Obtener todos los mensajes de una sesión de chat específica
 export async function getSessionMessages(req: Request, res: Response) {
   try {
     const { sessionId } = req.params as { sessionId: string };
 
     const messages = await prisma.chatMessage.findMany({
       where: { sessionId },
-      orderBy: { createdAt: 'asc' }, // Orden cronológico para mostrar la charla de arriba a abajo
+      orderBy: { createdAt: 'asc' },
       select: {
         id: true,
         role: true,
