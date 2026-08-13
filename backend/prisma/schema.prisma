@@ -13,6 +13,12 @@ enum Role {
   ADMIN
 }
 
+// 👈 Usamos MessageRole para no chocar con el enum Role de los usuarios
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
 enum DocumentStatus {
   PENDING
   PROCESSING
@@ -44,21 +50,46 @@ model Document {
   userId        String
   user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   chunks        DocumentChunk[]
+  sessions      ChatSession[]   // 👈 Relación con las sesiones de chat
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
 
 model DocumentChunk {
-  id          String   @id @default(uuid())
-  documentId  String
-  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  chunkIndex  Int
-  content     String   @db.Text
-  
-  // 👈 Cambiamos a 768 para alinearlo con Gemini
-  embedding   Unsupported("vector(768)")?
+  id         String   @id @default(uuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunkIndex Int
+  content    String   @db.Text
 
-  createdAt   DateTime @default(now())
+  embedding  Unsupported("vector(1536)")?
+
+  createdAt  DateTime @default(now())
 
   @@index([documentId])
+}
+
+// ------------------------------------
+// MODELOS PARA EL HISTORIAL DE CHAT
+// ------------------------------------
+
+model ChatSession {
+  id         String        @id @default(uuid())
+  documentId String
+  document   Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  title      String        @default("Nueva conversación")
+  messages   ChatMessage[]
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model ChatMessage {
+  id        String      @id @default(uuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      MessageRole
+  content   String      @db.Text
+  createdAt DateTime    @default(now())
+
+  @@index([sessionId])
 }
