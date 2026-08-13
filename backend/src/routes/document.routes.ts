@@ -1,10 +1,13 @@
 import { Router } from 'express';
-import { uploadDocument } from '../controllers/document.controller.js';
+import { uploadDocument, getAllDocuments, getDocumentById, deleteDocument } from '../controllers/document.controller.js';
 import { upload } from '../middleware/upload.js';
 
 const router = Router();
 
-// POST /api/documents/upload
+//   /api/documents/
 router.post('/upload', upload.single('file'), uploadDocument);
+router.get('/', getAllDocuments);
+router.get('/:id', getDocumentById);
+router.delete('/:id', deleteDocument);
 
 export default router;
